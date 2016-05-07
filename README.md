@@ -1,5 +1,14 @@
 # Scoped Fixtures
 
+Compatible with scala-test `2.2.x`; built for Scala `2.10` and Scala `2.11`.
+
+## Installing
+
+    libraryDependencies += "com.spingo" %% "scoped-fixtures" % "1.0.0"
+
+# About
+
+
 For stateful values that re-initialize on each run.
 
 ## Fixture Types:
