@@ -1,10 +1,10 @@
 # Scoped Fixtures
 
-Compatible with scala-test `2.2.x`; built for Scala `2.10` and Scala `2.11`.
+Compatible with scala-test `3.0.x`; Scala `2.11` and `2.12`.
 
 ## Installing
 
-    libraryDependencies += "com.spingo" %% "scoped-fixtures" % "1.0.0"
+    libraryDependencies += "com.spingo" %% "scoped-fixtures" % "2.0.0"
 
 # About
 
