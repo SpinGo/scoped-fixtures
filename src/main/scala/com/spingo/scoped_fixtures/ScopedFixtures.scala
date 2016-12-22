@@ -1,102 +1,122 @@
 package com.spingo.scoped_fixtures
 
-import scala.util.DynamicVariable
 import org.scalatest.{Suite, Status, Args}
+import ScopedFixtures._
+
+object ScopedFixtures {
+  type ScopedFn[T] = (T => Status) => Status
+  sealed abstract class ScopedFixtureException(message: String) extends Exception(message)
+  class InvalidForwardReference(fixtureType: TestFixture[Any]) extends ScopedFixtureException(s"Forward referencing of non-lazy ${fixtureType.name}")
+  class ReadOutsideOfTestAttempt(fixtureType: TestFixture[Any]) extends ScopedFixtureException(s"Invalid attempt to resolve ${fixtureType.name} outside of a test")
+  class DeclarationOutsideOfTestAttempt() extends ScopedFixtureException(s"Defining scoped variables outside of a test is not allowed")
+}
+
+trait TestFixture[+T] {
+  def name: String = getClass.getSimpleName
+  protected def instance: T
+  protected val insideTestScope: () => Boolean
+
+  def apply() = {
+    if (insideTestScope())
+      instance
+    else
+      throw(new ReadOutsideOfTestAttempt(this))
+  }
+
+  def aroundTest(body: () => Status): Status
+}
+
+class ScopedFixture[T]( protected val insideTestScope: () => Boolean, scopedGetter: ScopedFn[T] ) extends TestFixture[T] {
+  private [this] var _initialized = false
+  private [this] var _instance: T = _
+  def instance: T = {
+    if (!_initialized)
+      throw(new InvalidForwardReference(this))
+    else
+      _instance
+  }
+
+  override def aroundTest(body: () => Status) = {
+    scopedGetter({ value: T =>
+      _initialized = true
+      _instance = value
+      val status = body()
+      _initialized = false
+      status
+    })
+  }
+}
+
+class LazyFixture[T](protected val insideTestScope: () => Boolean, getter: => T) extends TestFixture[T] {
+  private class LazyGetter {
+    lazy val value: T = getter
+  }
+
+  private [this] var _lazyGetter: LazyGetter = _
+  def instance = _lazyGetter.value
+
+  override def aroundTest(body: () => Status) = {
+    _lazyGetter = new LazyGetter
+    body()
+  }
+}
+
+class EagerFixture[T]( protected val insideTestScope: () => Boolean, getter: => T) extends TestFixture[T] {
+  private [this] var _initialized = false
+  private [this] var _instance: T = _
+  def instance = if (!_initialized)
+    throw(new InvalidForwardReference(this))
+  else
+    _instance
+
+  override def aroundTest(body: () => Status) = {
+    _instance = getter
+    _initialized = true
+    val status = body()
+    _initialized = false
+    status
+  }
+}
 
 trait ScopedFixtures extends Suite {
-  type ScopedFn[T] = (T => Status) => Status
-  type AroundFn = (() => Status) => Status
-  var aroundFns: List[AroundFn] = Nil
-
-  private def pushAroundFn(fn: AroundFn): Unit =
-    aroundFns = aroundFns :+ fn
-
-  val insideTestScope = new DynamicVariable(false)
-
-  trait TestFixture[T] {
-    protected val binding = new DynamicVariable[Option[T]](None)
-    protected def resolveValue: T
-    def instance =
-      binding.value.getOrElse { resolveValue }
-    def apply() =
-      instance
-    if (insideTestScope.value)
-      throw(new Exception("Defining scoped variables inside a test is not allowed."))
+  private var insideTestScope = false
+  private val insideTestScopeGetter = () => insideTestScope
+  private [this] var fixtures = List.empty[TestFixture[Any]]
+  private def registeringFixture[T](fixture: TestFixture[T]): TestFixture[T] = synchronized {
+    fixtures = fixture :: fixtures
+    fixture
   }
 
-  class ScopedFixture[T]( scopedGetter: ScopedFn[T] ) extends TestFixture[T] {
-    def resolveValue =
-      if ( insideTestScope.value )
-        throw(new Exception("Eager access a ScopedFixture outside of order not allowed."))
-      else
-        throw(new Exception("Tried to access value of ScopedFixture outside of test"))
-
-    pushAroundFn((body: () => Status) => {
-      scopedGetter({ value: T =>
-        binding.withValue(Some(value)) {
-          body()
-        }
-      })
-    })
-  }
 
   object ScopedFixture {
-    def apply[T]( fn: ScopedFn[T] ) = {
-      new ScopedFixture[T](fn)
+    def apply[T]( fn: ScopedFn[T] ) = registeringFixture {
+      new ScopedFixture[T](insideTestScopeGetter, fn)
     }
-  }
-
-  class LazyFixture[T]( getter: => T) extends TestFixture[T] {
-    val scopeInstantiated = new DynamicVariable(false)
-    def resolveValue =
-      if (! insideTestScope.value)
-        throw(new Exception("Tried to access a LazyFixture outside of test"))
-      else if ( ! scopeInstantiated.value )
-        throw(new Exception("Eager resolve LazyFixture outside of order not allowed"))
-      else {
-        val value = getter
-        binding.value = Some(value)
-        value
-      }
-
-    pushAroundFn((body: () => Status) => {
-      scopeInstantiated.withValue(true) {
-        binding.withValue(None) { body() }
-      }
-    })
   }
 
   object LazyFixture {
-    def apply[T]( getter: => T) = {
-      new LazyFixture[T](getter)
+    def apply[T]( getter: => T) = registeringFixture {
+      new LazyFixture[T](insideTestScopeGetter, getter)
     }
   }
-
-  class EagerFixture[T]( getter: => T) extends TestFixture[T] {
-    def resolveValue = if (insideTestScope.value)
-      throw(new Exception("Attempt to eagerly reference an EagerFixture outside of order not allowed."))
-    else
-      throw(new Exception("Tried to access Eager value outside of test"))
-
-    pushAroundFn((body: () => Status) => {
-      binding.withValue(Some(getter)) { body() }
-    })
-  }
   object EagerFixture {
-    def apply[T]( fn: => T) = {
-      new EagerFixture[T](fn)
+    def apply[T]( fn: => T) = registeringFixture {
+      new EagerFixture[T](insideTestScopeGetter, fn)
     }
   }
 
   abstract protected override def runTest(testName: String, args: Args): Status = {
-    def iterate(fns: List[AroundFn])(): Status = {
+    def iterate(fns: List[TestFixture[Any]]): Status = {
       fns match {
-        case head :: tail => head(iterate(tail)_)
-        case Nil => super.runTest(testName, args)
+        case head :: tail =>
+          head.aroundTest { () => iterate(tail) }
+        case Nil =>
+          super.runTest(testName, args)
       }
     }
-    insideTestScope.withValue(true) {
-      iterate(aroundFns)
-    }
+    insideTestScope = true
+    val status = iterate(fixtures.reverse)
+    insideTestScope = false
+    status
   }
 }

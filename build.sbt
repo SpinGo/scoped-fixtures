@@ -4,13 +4,11 @@ organization := "com.spingo"
 
 version := "1.0.0"
 
-sbtVersion := "0.13"
+scalaVersion := "2.11.8"
 
-scalaVersion := "2.10.4"
+crossScalaVersions := Seq("2.10.4", "2.11.8")
 
-crossScalaVersions := Seq("2.11.6", "2.10.4")
-
-libraryDependencies ++= Seq("org.scalatest" %% "scalatest" % "2.2.0")
+libraryDependencies ++= Seq("org.scalatest" %% "scalatest" % "3.0.1")
 
 licenses := Seq("Apache 2" -> url("http://www.apache.org/licenses/LICENSE-2.0.txt"))
 

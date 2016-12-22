@@ -55,18 +55,3 @@ The value assigned to val is a container; in order to get the actual value, you 
       status
     }
     implicit def actorSystem = actorSystemFixture()
-
-Note, `ScopedFixtures` fixtures uses thread-local variables and does not work when a multi-threaded `ExecutionContext` is used! If you must test concurrent code, you need to either:
-
-- A) Dereference the value in the parent test thread
-
-- B) Use a single-threaded ExecutionContext
-
-        object SingleThreadedExecutionContext extends scala.concurrent.ExecutionContext {
-          def execute(runnable: Runnable): Unit = runnable.run
-          def reportFailure(cause: Throwable): Unit = {
-            println(s"SingleThreadedExecutionContext execution failed! ${cause}")
-          }
-        }
-
-- C) (my least favorite) Don't use `ScopedFixtures`.
