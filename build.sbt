@@ -2,13 +2,13 @@ name := "scoped-fixtures"
 
 organization := "com.spingo"
 
-version := "2.0.0"
+version := "3.0.0-SNAPSHOT"
 
-scalaVersion := "2.11.8"
+scalaVersion := "2.12.8"
 
-crossScalaVersions := Seq("2.11.8", "2.12.1")
+crossScalaVersions := Seq("2.11.8", "2.12.8", "2.13.0")
 
-libraryDependencies ++= Seq("org.scalatest" %% "scalatest" % "3.0.1")
+libraryDependencies ++= Seq("org.scalatest" %% "scalatest" % "3.0.8")
 
 licenses := Seq("Apache 2" -> url("http://www.apache.org/licenses/LICENSE-2.0.txt"))
 
